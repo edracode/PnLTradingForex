@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Journal & PnL Monitor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2canvas (Export Card to Image) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- HEADER & RATE SETTINGS -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-800 p-6 rounded-2xl border border-slate-700 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-emerald-400"><i class="fa-solid fa-chart-line mr-2"></i>Trading Journal & PnL Tracker</h1>
+                <p class="text-sm text-slate-400">Pantau pertumbuhan dana, rasio PnL, dan buat Card PnL custom.</p>
+            </div>
+            
+            <!-- Konversi Kurs Input -->
+            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-700/80 flex items-center gap-3 text-sm">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Kurs (1 USD / 100 USC = Rp)</label>
+                    <input type="number" id="usdRate" value="17981.99" step="0.01" onchange="updateAll()" 
+                           class="bg-slate-800 text-emerald-400 font-semibold px-3 py-1 rounded border border-slate-600 w-36 focus:outline-none focus:border-emerald-500">
+                </div>
+                <div class="text-xs text-slate-400 border-l border-slate-700 pl-3">
+                    <p>1 USC ≈ <span id="uscToIdrDisplay" class="text-white font-mono">Rp179.82</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD SUMMARY CARDS -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Modal Awal -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-medium uppercase">Modal Awal</span>
+                <div class="mt-2">
+                    <input type="number" id="initialCapital" value="100" onchange="updateAll()" 
+                           class="bg-slate-900 text-xl font-bold text-white px-2 py-1 rounded w-full border border-slate-700 focus:outline-none focus:border-emerald-500">
+                    <span class="text-xs text-slate-400 block mt-1">USC</span>
+                </div>
+                <p class="text-sm text-slate-400 mt-2" id="initialCapitalRp">Rp0</p>
+            </div>
+
+            <!-- Total Equity / Saldo Saat Ini -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-medium uppercase">Saldo Saat Ini (Equity)</span>
+                <p class="text-2xl font-bold text-white mt-1" id="currentEquityUSC">0.00 USC</p>
+                <p class="text-sm text-slate-400 mt-1" id="currentEquityRp">Rp0</p>
+            </div>
+
+            <!-- Total PnL (USC & Rp) -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-medium uppercase">Total PnL (USC & Rp)</span>
+                <p class="text-2xl font-bold mt-1" id="totalPnlUSC">0.00 USC</p>
+                <p class="text-sm font-semibold mt-1" id="totalPnlRp">Rp0</p>
+            </div>
+
+            <!-- Total PnL (%) -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                <span class="text-xs text-slate-400 font-medium uppercase">Persentase PnL</span>
+                <p class="text-3xl font-extrabold mt-1" id="totalPnlPercent">0.00%</p>
+                <p class="text-xs text-slate-400 mt-2" id="pnlStatusText">Status: Netral</p>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT: FORM, HISTORY, CHART -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- COLUMN 1: FORM INPUT & RIWAYAT -->
+            <div class="space-y-6">
+                <!-- Form Input Jurnal -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                    <h2 class="text-lg font-bold text-white mb-4"><i class="fa-solid fa-plus-circle text-emerald-400 mr-2"></i>Tambah Transaksi</h2>
+                    <form id="tradeForm" onsubmit="addTrade(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Tanggal</label>
+                            <input type="date" id="tradeDate" required class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Pair / Aset (misal: XAUUSD)</label>
+                            <input type="text" id="tradePair" placeholder="XAUUSD" required class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">PnL (USC) - Gunakan minus (-) jika Loss</label>
+                            <input type="number" step="0.01" id="tradePnl" placeholder="Contoh: 0.50 atau -0.30" required class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Catatan (Opsional)</label>
+                            <input type="text" id="tradeNote" placeholder="Scalping M1 / Target 0.50 USC" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition duration-200">
+                            Simpan Transaksi
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Tabel Riwayat Transaksi -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-bold text-white"><i class="fa-solid fa-history text-emerald-400 mr-2"></i>Riwayat Trade</h2>
+                        <button onclick="clearHistory()" class="text-xs text-rose-400 hover:underline">Hapus Semua</button>
+                    </div>
+                    <div class="overflow-y-auto max-h-60 text-sm">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-xs text-slate-400 border-b border-slate-700">
+                                    <th class="py-2">Tgl</th>
+                                    <th class="py-2">Pair</th>
+                                    <th class="py-2">PnL (USC)</th>
+                                    <th class="py-2">PnL (Rp)</th>
+                                    <th class="py-2 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody" class="divide-y divide-slate-700/50">
+                                <!-- Data dimasukkan via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMN 2: GRAFIK EKUITAS & GENERATOR CARD SHARE -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Grafik Perkembanagan -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                    <h2 class="text-lg font-bold text-white mb-4"><i class="fa-solid fa-chart-area text-emerald-400 mr-2"></i>Grafik Pertumbuhan Akun (USC)</h2>
+                    <div class="relative w-full h-64">
+                        <canvas id="equityChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- CARD SHARE GENERATOR SECTION -->
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+                    <h2 class="text-lg font-bold text-white mb-2"><i class="fa-solid fa-share-nodes text-emerald-400 mr-2"></i>Buat Card PnL Shareable</h2>
+                    <p class="text-xs text-slate-400 mb-6">Pilih foto dari galeri HP/PC kamu sebagai latar belakang card PnL yang ingin dibagikan.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                        
+                        <!-- Kontrol Pengaturan Card -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Upload Foto Latar (Galeri)</label>
+                                <input type="file" id="cardBgInput" accept="image/*" class="w-full text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Pilih Transaksi untuk Di-share</label>
+                                <select id="tradeSelectForCard" onchange="loadSelectedTradeToCard()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                                    <option value="summary">Ringkasan Total PnL Akun</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">Custom Label / Pair</label>
+                                <input type="text" id="cardPairInput" value="XAUUSD Scalping" oninput="renderCardCustomText()" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <button onclick="downloadCard()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl transition duration-200 shadow-lg flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-download"></i> Unduh Gambar Card (PNG)
+                            </button>
+                        </div>
+
+                        <!-- VISUAL CARD PREVIEW (YANG AKAN DI-EXPORT SEBAGAI GAMBAR) -->
+                        <div class="flex justify-center">
+                            <div id="pnlCard" class="relative w-[340px] h-[460px] rounded-2xl overflow-hidden p-6 text-white shadow-2xl flex flex-col justify-between border border-slate-600/50 bg-slate-900 bg-cover bg-center transition-all" style="background-image: linear-gradient(135deg, #1e293b, #0f172a);">
+                                
+                                <!-- Overlay Tint Gelap agar Teks Terbaca Jelas -->
+                                <div class="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
+
+                                <!-- Card Header -->
+                                <div class="relative z-10 flex justify-between items-center">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 font-bold text-xs">
+                                            <i class="fa-solid fa-bolt"></i>
+                                        </div>
+                                        <span class="font-bold text-xs tracking-wider uppercase text-slate-200" id="cardPairDisplay">XAUUSD Scalping</span>
+                                    </div>
+                                    <span class="text-[10px] bg-white/10 px-2 py-0.5 rounded-full backdrop-blur-md text-slate-300" id="cardDateDisplay">Today</span>
+                                </div>
+
+                                <!-- Card Body: Main PnL % & USC -->
+                                <div class="relative z-10 my-auto text-center py-4">
+                                    <span class="text-xs uppercase tracking-widest text-slate-300 font-medium">Profit / Loss</span>
+                                    <h1 class="text-4xl font-black my-1 text-emerald-400 drop-shadow-md" id="cardPnlPercentDisplay">+0.00%</h1>
+                                    
+                                    <div class="inline-block mt-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-xl border border-white/10">
+                                        <p class="text-lg font-bold text-white" id="cardPnlUscDisplay">+0.00 USC</p>
+                                        <p class="text-xs text-slate-300" id="cardPnlRpDisplay">Rp0</p>
+                                    </div>
+                                </div>
+
+                                <!-- Card Footer: Detail Modal & Watermark -->
+                                <div class="relative z-10 border-t border-white/15 pt-3 flex justify-between items-end text-xs">
+                                    <div>
+                                        <p class="text-[10px] text-slate-400">Modal / Saldo</p>
+                                        <p class="font-semibold text-slate-200" id="cardEquityDisplay">100.00 USC</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-emerald-400 text-xs">ABC SCALPER</p>
+                                        <p class="text-[9px] text-slate-400">Trading Journal Engine</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // State Global
+        let trades = JSON.parse(localStorage.getItem('trading_journal_trades')) || [];
+        let chartInstance = null;
+
+        // Inisialisasi awal
+        window.onload = function() {
+            document.getElementById('tradeDate').valueAsDate = new Date();
+            initChart();
+            updateAll();
+            setupBgUploader();
+        };
+
+        // Hitung Kurs & Konversi
+        function getRate() {
+            return parseFloat(document.getElementById('usdRate').value) || 17981.99;
+        }
+
+        function getUscToIdrRate() {
+            return getRate() / 100; // 1 USD = 100 USC
+        }
+
+        // Simpan & Update Semua Komponen
+        function updateAll() {
+            const initialCapitalUSC = parseFloat(document.getElementById('initialCapital').value) || 0;
+            const rateUSCToIDR = getUscToIdrRate();
+
+            // Hitung Total PnL USC dari Riwayat
+            let totalPnlUSC = trades.reduce((sum, t) => sum + t.pnl, 0);
+            let currentEquityUSC = initialCapitalUSC + totalPnlUSC;
+            let pnlPercent = initialCapitalUSC > 0 ? (totalPnlUSC / initialCapitalUSC) * 100 : 0;
+
+            // Konversi IDR
+            let initialCapitalRp = initialCapitalUSC * rateUSCToIDR;
+            let currentEquityRp = currentEquityUSC * rateUSCToIDR;
+            let totalPnlRp = totalPnlUSC * rateUSCToIDR;
+
+            // Update UI Summary
+            document.getElementById('uscToIdrDisplay').innerText = `Rp${rateUSCToIDR.toFixed(2)}`;
+            document.getElementById('initialCapitalRp').innerText = formatIDR(initialCapitalRp);
+            document.getElementById('currentEquityUSC').innerText = `${currentEquityUSC.toFixed(2)} USC`;
+            document.getElementById('currentEquityRp').innerText = formatIDR(currentEquityRp);
+            
+            // Format PnL Text & Colors
+            const pnlUscEl = document.getElementById('totalPnlUSC');
+            const pnlRpEl = document.getElementById('totalPnlRp');
+            const pnlPercentEl = document.getElementById('totalPnlPercent');
+            const statusEl = document.getElementById('pnlStatusText');
+
+            pnlUscEl.innerText = `${totalPnlUSC >= 0 ? '+' : ''}${totalPnlUSC.toFixed(2)} USC`;
+            pnlRpEl.innerText = `${totalPnlRp >= 0 ? '+' : ''}${formatIDR(totalPnlRp)}`;
+            pnlPercentEl.innerText = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`;
+
+            if (totalPnlUSC > 0) {
+                pnlUscEl.className = "text-2xl font-bold mt-1 text-emerald-400";
+                pnlRpEl.className = "text-sm font-semibold mt-1 text-emerald-400";
+                pnlPercentEl.className = "text-3xl font-extrabold mt-1 text-emerald-400";
+                statusEl.innerText = "Status: Profit";
+                statusEl.className = "text-xs text-emerald-400 mt-2";
+            } else if (totalPnlUSC < 0) {
+                pnlUscEl.className = "text-2xl font-bold mt-1 text-rose-400";
+                pnlRpEl.className = "text-sm font-semibold mt-1 text-rose-400";
+                pnlPercentEl.className = "text-3xl font-extrabold mt-1 text-rose-400";
+                statusEl.innerText = "Status: Drawdown / Loss";
+                statusEl.className = "text-xs text-rose-400 mt-2";
+            } else {
+                pnlUscEl.className = "text-2xl font-bold mt-1 text-white";
+                pnlRpEl.className = "text-sm font-semibold mt-1 text-slate-400";
+                pnlPercentEl.className = "text-3xl font-extrabold mt-1 text-white";
+                statusEl.innerText = "Status: Break Even";
+                statusEl.className = "text-xs text-slate-400 mt-2";
+            }
+
+            // Simpan ke LocalStorage
+            localStorage.setItem('trading_journal_trades', JSON.stringify(trades));
+
+            renderHistoryTable();
+            updateChart(initialCapitalUSC);
+            updateTradeDropdown();
+            loadSelectedTradeToCard();
+        }
+
+        // Tambah Transaksi
+        function addTrade(e) {
+            e.preventDefault();
+            const date = document.getElementById('tradeDate').value;
+            const pair = document.getElementById('tradePair').value;
+            const pnl = parseFloat(document.getElementById('tradePnl').value);
+            const note = document.getElementById('tradeNote').value;
+
+            trades.push({ id: Date.now(), date, pair, pnl, note });
+            document.getElementById('tradePnl').value = '';
+            document.getElementById('tradeNote').value = '';
+
+            updateAll();
+        }
+
+        // Hapus Riwayat
+        function clearHistory() {
+            if (confirm("Yakin ingin menghapus seluruh riwayat trade?")) {
+                trades = [];
+                updateAll();
+            }
+        }
+
+        function deleteSingleTrade(id) {
+            trades = trades.filter(t => t.id !== id);
+            updateAll();
+        }
+
+        // Render Tabel Riwayat
+        function renderHistoryTable() {
+            const tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = '';
+            const rateUSCToIDR = getUscToIdrRate();
+
+            trades.slice().reverse().forEach(trade => {
+                const pnlRp = trade.pnl * rateUSCToIDR;
+                const isProfit = trade.pnl >= 0;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-700/30 transition";
+                tr.innerHTML = `
+                    <td class="py-2 text-slate-300 text-xs">${trade.date}</td>
+                    <td class="py-2 font-semibold text-white">${trade.pair}</td>
+                    <td class="py-2 font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}">${isProfit ? '+' : ''}${trade.pnl.toFixed(2)}</td>
+                    <td class="py-2 text-xs ${isProfit ? 'text-emerald-400' : 'text-rose-400'}">${isProfit ? '+' : ''}${formatIDR(pnlRp)}</td>
+                    <td class="py-2 text-center">
+                        <button onclick="deleteSingleTrade(${trade.id})" class="text-rose-400 hover:text-rose-300"><i class="fa-solid fa-trash text-xs"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Chart.js - Grafik Pertumbuhan
+        function initChart() {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Start'],
+                    datasets: [{
+                        label: 'Equity (USC)',
+                        data: [0],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                        y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+                    }
+                }
+            });
+        }
+
+        function updateChart(initialCapital) {
+            if (!chartInstance) return;
+
+            let currentEquity = initialCapital;
+            let labels = ['Awal'];
+            let data = [initialCapital];
+
+            trades.forEach((t, i) => {
+                currentEquity += t.pnl;
+                labels.push(`T-${i+1}`);
+                data.push(currentEquity);
+            });
+
+            chartInstance.data.labels = labels;
+            chartInstance.data.datasets[0].data = data;
+            chartInstance.update();
+        }
+
+        // CARD GENERATOR & SHARE LOGIC
+        function setupBgUploader() {
+            const fileInput = document.getElementById('cardBgInput');
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        const card = document.getElementById('pnlCard');
+                        card.style.backgroundImage = `url('${evt.target.result}')`;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        function updateTradeDropdown() {
+            const select = document.getElementById('tradeSelectForCard');
+            select.innerHTML = '<option value="summary">Ringkasan Total PnL Akun</option>';
+
+            trades.slice().reverse().forEach((trade, idx) => {
+                const option = document.createElement('option');
+                option.value = trade.id;
+                option.innerText = `${trade.date} - ${trade.pair} (${trade.pnl >= 0 ? '+' : ''}${trade.pnl} USC)`;
+                select.appendChild(option);
+            });
+        }
+
+        function loadSelectedTradeToCard() {
+            const selectedVal = document.getElementById('tradeSelectForCard').value;
+            const initialCapitalUSC = parseFloat(document.getElementById('initialCapital').value) || 0;
+            const rateUSCToIDR = getUscToIdrRate();
+
+            let pnlUSC = 0;
+            let pnlPercent = 0;
+            let pairText = document.getElementById('cardPairInput').value;
+            let dateText = "Total Overall";
+            let equityText = "";
+
+            if (selectedVal === 'summary') {
+                pnlUSC = trades.reduce((sum, t) => sum + t.pnl, 0);
+                pnlPercent = initialCapitalUSC > 0 ? (pnlUSC / initialCapitalUSC) * 100 : 0;
+                dateText = new Date().toLocaleDateString('id-ID');
+                equityText = `${(initialCapitalUSC + pnlUSC).toFixed(2)} USC`;
+            } else {
+                const trade = trades.find(t => t.id == selectedVal);
+                if (trade) {
+                    pnlUSC = trade.pnl;
+                    pnlPercent = initialCapitalUSC > 0 ? (pnlUSC / initialCapitalUSC) * 100 : 0;
+                    pairText = trade.pair;
+                    dateText = trade.date;
+                    document.getElementById('cardPairInput').value = trade.pair;
+                    equityText = `${trade.pnl >= 0 ? 'Win' : 'Loss'} Single Trade`;
+                }
+            }
+
+            let pnlRp = pnlUSC * rateUSCToIDR;
+
+            // Render ke Visual Card
+            document.getElementById('cardPairDisplay').innerText = pairText;
+            document.getElementById('cardDateDisplay').innerText = dateText;
+            document.getElementById('cardEquityDisplay').innerText = equityText;
+
+            const cardPnlPercentEl = document.getElementById('cardPnlPercentDisplay');
+            const cardPnlUscEl = document.getElementById('cardPnlUscDisplay');
+            const cardPnlRpEl = document.getElementById('cardPnlRpDisplay');
+
+            cardPnlPercentEl.innerText = `${pnlUSC >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`;
+            cardPnlUscEl.innerText = `${pnlUSC >= 0 ? '+' : ''}${pnlUSC.toFixed(2)} USC`;
+            cardPnlRpEl.innerText = `${pnlRp >= 0 ? '+' : ''}${formatIDR(pnlRp)}`;
+
+            if (pnlUSC >= 0) {
+                cardPnlPercentEl.className = "text-4xl font-black my-1 text-emerald-400 drop-shadow-md";
+            } else {
+                cardPnlPercentEl.className = "text-4xl font-black my-1 text-rose-400 drop-shadow-md";
+            }
+        }
+
+        function renderCardCustomText() {
+            const pairText = document.getElementById('cardPairInput').value;
+            document.getElementById('cardPairDisplay').innerText = pairText || "XAUUSD Scalping";
+        }
+
+        // Export Card to PNG Image
+        function downloadCard() {
+            const cardElement = document.getElementById('pnlCard');
+            html2canvas(cardElement, {
+                scale: 3, // High DPI Resolution
+                useCORS: true,
+                allowTaint: true
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `PnL_Card_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        // Helper Format IDR Currency
+        function formatIDR(amount) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
+        }
+    </script>
+</body>
+</html>
