@@ -226,9 +226,22 @@
         let trades = JSON.parse(localStorage.getItem('trading_journal_trades')) || [];
         let chartInstance = null;
 
-        // Inisialisasi awal
+        // Inisialisasi awal saat halaman dibuka/refresh
         window.onload = function() {
             document.getElementById('tradeDate').valueAsDate = new Date();
+
+            // Muat Modal Awal dari LocalStorage jika ada
+            const savedCapital = localStorage.getItem('trading_journal_initial_capital');
+            if (savedCapital !== null) {
+                document.getElementById('initialCapital').value = savedCapital;
+            }
+
+            // Muat Kurs USD dari LocalStorage jika ada
+            const savedRate = localStorage.getItem('trading_journal_usd_rate');
+            if (savedRate !== null) {
+                document.getElementById('usdRate').value = savedRate;
+            }
+
             initChart();
             updateAll();
             setupBgUploader();
@@ -246,6 +259,7 @@
         // Simpan & Update Semua Komponen
         function updateAll() {
             const initialCapitalUSC = parseFloat(document.getElementById('initialCapital').value) || 0;
+            const usdRateVal = parseFloat(document.getElementById('usdRate').value) || 17981.99;
             const rateUSCToIDR = getUscToIdrRate();
 
             // Hitung Total PnL USC dari Riwayat
@@ -294,8 +308,10 @@
                 statusEl.className = "text-xs text-slate-400 mt-2";
             }
 
-            // Simpan ke LocalStorage
+            // Simpan Data ke LocalStorage agar Tidak Teriset saat Refresh
             localStorage.setItem('trading_journal_trades', JSON.stringify(trades));
+            localStorage.setItem('trading_journal_initial_capital', initialCapitalUSC);
+            localStorage.setItem('trading_journal_usd_rate', usdRateVal);
 
             renderHistoryTable();
             updateChart(initialCapitalUSC);
